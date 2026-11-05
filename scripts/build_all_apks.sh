@@ -34,8 +34,12 @@ if [[ "${MODE}" == "release" ]]; then
     echo "🔨 Compiling Standard Debug (:app:assembleStandardDebug)..."
     "${ROOT_DIR}/gradlew" -p "${ROOT_DIR}" :app:assembleStandardDebug --stacktrace --console=plain
 
+    echo "🔨 Compiling Termux Debug (:app:assembleTermuxDebug)..."
+    "${ROOT_DIR}/gradlew" -p "${ROOT_DIR}" :app:assembleTermuxDebug --stacktrace --console=plain
+
     APKS_SRC="${ROOT_DIR}/app/build/outputs/apk"
     find "${APKS_SRC}/standard/debug" -name "*.apk" -exec cp {} "${OUTPUT_DIR}/antiGem-standard-v${VERSION_NAME}-debug.apk" \;
+    find "${APKS_SRC}/termux/debug" -name "*.apk" -exec cp {} "${OUTPUT_DIR}/antiGem-termux-v${VERSION_NAME}-debug.apk" \;
 
     # if [[ -f "${ROOT_DIR}/app/src/main/assets/bin/agy_ide_bridge" ]]; then
     #     cp "${ROOT_DIR}/app/src/main/assets/bin/agy_ide_bridge" "${OUTPUT_DIR}/agy_ide_bridge-v${VERSION_NAME}-android-arm64"
