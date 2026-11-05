@@ -115,6 +115,10 @@ object TermuxDaemonManager {
                         val ep = AuthPreferences.currentBridgeHttpUrl.removePrefix("http://").removePrefix("https://")
                         _statusMessage.value = "Running on $ep"
                     }
+                    is com.example.gemini.data.remote.SystemConnectionState.DirectGoogle -> {
+                        _status.value = DaemonStatus.RUNNING
+                        _statusMessage.value = "Google Account Connected"
+                    }
                     is com.example.gemini.data.remote.SystemConnectionState.Offline,
                     is com.example.gemini.data.remote.SystemConnectionState.Error -> {
                         _status.value = DaemonStatus.ERROR

@@ -2,6 +2,7 @@ package com.example.gemini.ui.chat
 
 import android.app.Application
 import android.content.Context
+import android.content.Intent
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -1007,7 +1008,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             val tier = authPrefs.subscriptionTier.firstOrNull() ?: "pro"
             if (!token.isNullOrBlank() && !email.isNullOrBlank()) {
                 val authInfo = com.example.gemini.data.remote.AgyHubClient.AgyAuthInfo(
-                    status = com.example.gemini.data.remote.AgyAuthStatus.AUTHENTICATED,
+                    status = com.example.gemini.data.remote.AgyHubClient.AgyAuthStatus.AUTHENTICATED,
                     isLoggedIn = true,
                     fullName = email.substringBefore('@'),
                     displayName = email.substringBefore('@'),
@@ -1261,7 +1262,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 val authInfo = com.example.gemini.data.remote.AgyHubClient.AgyAuthInfo(
-                    status = com.example.gemini.data.remote.AgyAuthStatus.AUTHENTICATED,
+                    status = com.example.gemini.data.remote.AgyHubClient.AgyAuthStatus.AUTHENTICATED,
                     isLoggedIn = true,
                     fullName = name,
                     displayName = name,
