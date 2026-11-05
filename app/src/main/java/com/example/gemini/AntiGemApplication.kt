@@ -14,6 +14,8 @@ import java.security.MessageDigest
 class AntiGemApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+        com.example.gemini.data.preferences.AuthPreferences.init(this)
+        com.example.gemini.data.local.LocalServerManager.autoStartOnAppLaunch(this)
         UpdateCheckWorker.schedule(this)
         PluginUpdateCheckWorker.schedule(this)
         // Reconnects adb when Wireless debugging turns back on (it gets a new port every time)

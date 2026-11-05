@@ -50,10 +50,27 @@ object LocalServerManager {
         val binBridge = File(LocalEnvironmentManager.getBinDir(context), "agy_ide_bridge")
         if (binBridge.exists()) return true
         return try {
-            context.assets.list("bin")?.contains("agy_ide_bridge") == true
+            val list = context.assets.list("bin")?.toList() ?: emptyList()
+            list.contains("agy_ide_bridge") || list.contains("agy_ide_bridge_arm") || list.contains("agy_ide_bridge_arm64")
         } catch (_: Exception) {
             false
         }
+    }
+
+    private fun extractBridgeBinaryByArch(context: Context, binDir: File) {
+        val arch = LocalEnvironmentManager.getBootstrapArch()
+        val assetList = try { context.assets.list("bin")?.toList() ?: emptyList() } catch (_: Exception) { emptyList() }
+        val targetAsset = when {
+            arch == "arm" && assetList.contains("agy_ide_bridge_arm") -> "agy_ide_bridge_arm"
+            arch == "aarch64" && assetList.contains("agy_ide_bridge_arm64") -> "agy_ide_bridge_arm64"
+            assetList.contains("agy_ide_bridge") -> "agy_ide_bridge"
+            else -> assetList.firstOrNull { it.startsWith("agy_ide_bridge") } ?: "agy_ide_bridge"
+        }
+        extractAssetToBin(context, binDir, targetAsset, "agy_ide_bridge")
+        val bridgeFile = File(binDir, "agy_ide_bridge")
+        bridgeFile.setExecutable(true, false)
+        bridgeFile.setReadable(true, false)
+        try { android.system.Os.chmod(bridgeFile.absolutePath, 493) } catch (_: Exception) {}
     }
 
     private fun extractAssetToBin(
@@ -115,7 +132,7 @@ object LocalServerManager {
                 if (!binDir.exists()) {
                     binDir.mkdirs()
                 }
-                extractAssetToBin(context, binDir, "agy_ide_bridge")
+                extractBridgeBinaryByArch(context, binDir)
                 try {
                     extractAssetToBin(context, binDir, "backup_bootstrap")
                 } catch (e: Exception) {
@@ -198,8 +215,8 @@ object LocalServerManager {
     private fun resolveServerCommand(context: Context): String? {
         val authPrefs = AuthPreferences(context)
         val bridgeCmd =
-            authPrefs.getAgyBridgeBinaryPathSync().trim().ifBlank { AuthPreferences.DEFAULT_BRIDGE_BINARY_PATH }
-        val agyCmd = authPrefs.getAgyBinaryPathSync().trim().ifBlank { AuthPreferences.DEFAULT_AGY_BINARY_PATH }
+            authPrefs.getAgyBridgeBinaryPathSync().trim().ifBlank { authPrefs.getDefaultBridgeBinaryPath() }
+        val agyCmd = authPrefs.getAgyBinaryPathSync().trim().ifBlank { authPrefs.getDefaultAgyBinaryPath() }
 
         val token = authPrefs.getSecurityTokenSync()
         val bridgePort = try {
@@ -268,6 +285,43 @@ object LocalServerManager {
         _status.value = LocalServerStatus.Stopped(exitCode = 0)
     }
 
+    private var watchdogJob: Job? = null
+
+    fun startWatchdog(context: Context) {
+        if (watchdogJob?.isActive == true) return
+        val appContext = context.applicationContext
+        watchdogJob = managerScope.launch {
+            while (isActive) {
+                delay(12000)
+                try {
+                    val bridgePort = try {
+                        java.net.URI(AuthPreferences.currentBridgeHttpUrl).port.takeIf { it > 0 } ?: com.example.gemini.BuildConfig.BRIDGE_PORT
+                    } catch (_: Exception) {
+                        com.example.gemini.BuildConfig.BRIDGE_PORT
+                    }
+                    val isBridgeUp = isPortListening(bridgePort)
+                    if (!isBridgeUp && hasServerScript(appContext)) {
+                        Log.w(TAG, "[Watchdog] Bridge port $bridgePort unreachable. Auto-restarting daemon...")
+                        startServerInternal(appContext, forceRestart = true)
+                    }
+                } catch (e: Exception) {
+                    Log.d(TAG, "[Watchdog] Port check: ${e.message}")
+                }
+            }
+        }
+    }
+
+    private fun isPortListening(port: Int): Boolean {
+        return try {
+            java.net.Socket().use { socket ->
+                socket.connect(java.net.InetSocketAddress("127.0.0.1", port), 500)
+                true
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     @Synchronized
     fun resetAutoStartFlag() {
         hasInitialAutoStarted = false
@@ -275,6 +329,7 @@ object LocalServerManager {
 
     @Synchronized
     fun autoStartOnAppLaunch(context: Context) {
+        startWatchdog(context)
         if (hasInitialAutoStarted) {
             Log.d(
                 TAG,
@@ -300,6 +355,7 @@ object LocalServerManager {
     }
 
     fun startServer(context: Context, forceRestart: Boolean = false) {
+        startWatchdog(context)
         if (hasServerScript(context)) {
             hasInitialAutoStarted = true
         }

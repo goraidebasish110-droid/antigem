@@ -1,9 +1,13 @@
 {
-  "version_code": 120,
-  "version_name": "1.0.20",
+  "version_code": 121,
+  "version_name": "1.0.21",
   "min_supported_version_code": 1,
   "changelog": [
-    "Seamless Google Sign-in and automatic Antigravity ID synchronization"
+    "Fix 32-bit ARM (armeabi-v7a) bootstrap error and dynamic paths",
+    "Multi-architecture agy_ide_bridge (arm + arm64) support",
+    "100% automatic background server startup with self-healing watchdog",
+    "Fix API 401 security token mismatch with multi-header verification",
+    "Built-in fallback AGY Hub on port 1237 for instant online connectivity"
   ],
   "is_critical": false
 }

@@ -114,6 +114,7 @@ class AgyBridgeService(
         .addInterceptor { chain ->
             val req = chain.request().newBuilder()
                 .header(AuthPreferences.currentFramedHeader, "true")
+                .header("X-AntiGem-Token", AuthPreferences.currentSecurityToken)
                 .build()
             chain.proceed(req)
         }
@@ -138,6 +139,7 @@ class AgyBridgeService(
         .addInterceptor { chain ->
             val req = chain.request().newBuilder()
                 .header(AuthPreferences.currentFramedHeader, "true")
+                .header("X-AntiGem-Token", AuthPreferences.currentSecurityToken)
                 .build()
             chain.proceed(req)
         }
@@ -158,6 +160,7 @@ class AgyBridgeService(
         .addInterceptor { chain ->
             val req = chain.request().newBuilder()
                 .header(AuthPreferences.currentFramedHeader, "true")
+                .header("X-AntiGem-Token", AuthPreferences.currentSecurityToken)
                 .build()
             chain.proceed(req)
         }

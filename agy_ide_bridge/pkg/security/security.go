@@ -50,9 +50,14 @@ func BuildFramedHeader(token string) string {
 
 // getTokenFilePath returns ~/.antigem_bridge/csrf_token.txt
 func getTokenFilePath() string {
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		home = "/data/data/com.termux/files/home"
+	home := os.Getenv("HOME")
+	if home == "" {
+		h, err := os.UserHomeDir()
+		if err == nil && h != "" {
+			home = h
+		} else {
+			home = "/data/data/com.termux/files/home"
+		}
 	}
 	return filepath.Join(home, ".antigem_bridge", "csrf_token.txt")
 }
@@ -341,8 +346,22 @@ func AuthMiddleware(token string, next http.Handler) http.Handler {
 			}
 		}
 
-		// 3. Also check query param ?token= (for WebSocket handshake if headers cannot be set)
-		if r.URL.Query().Get("token") == token {
+		// 3. Check X-AntiGem-Token header or Authorization Bearer token
+		if reqToken := r.Header.Get("X-AntiGem-Token"); reqToken == token && token != "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if reqToken := r.Header.Get("X-Antigem-Token"); reqToken == token && token != "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") && strings.TrimPrefix(auth, "Bearer ") == token {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// 4. Also check query param ?token= (for WebSocket handshake if headers cannot be set)
+		if r.URL.Query().Get("token") == token && token != "" {
 			next.ServeHTTP(w, r)
 			return
 		}

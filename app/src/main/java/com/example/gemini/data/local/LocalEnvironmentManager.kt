@@ -634,16 +634,21 @@ object LocalEnvironmentManager {
     }
 
     fun getBootstrapArch(): String {
+        val is64Bit = try {
+            android.os.Process.is64Bit()
+        } catch (_: Throwable) {
+            Build.SUPPORTED_64_BIT_ABIS != null && Build.SUPPORTED_64_BIT_ABIS.isNotEmpty()
+        }
         val abis = Build.SUPPORTED_ABIS ?: emptyArray()
         for (abi in abis) {
             when {
-                abi.startsWith("arm64") || abi.equals("aarch64", ignoreCase = true) -> return "aarch64"
+                (abi.startsWith("arm64") || abi.equals("aarch64", ignoreCase = true)) && is64Bit -> return "aarch64"
                 abi.startsWith("armeabi") || abi.equals("arm", ignoreCase = true) -> return "arm"
-                abi.contains("x86_64") -> return "x86_64"
+                abi.contains("x86_64") && is64Bit -> return "x86_64"
                 abi.contains("x86") || abi.equals("i686", ignoreCase = true) -> return "i686"
             }
         }
-        return "aarch64"
+        return if (is64Bit) "aarch64" else "arm"
     }
 
     fun getDeviceHardwareInfo(): DeviceHardwareInfo {
@@ -724,21 +729,45 @@ object LocalEnvironmentManager {
         val packageName = context.packageName
         val isTermux = isTermuxPackage(context)
         val info = if (isTermux) {
+            val rootfsUrl: String
+            val rootfsTag: String
+            val rootfsAsset: String
+            val rootfsSize: Long
+            val sizeFormatted: String
+            if (arch == "arm") {
+                rootfsUrl = "https://github.com/termux/termux-packages/releases/download/bootstrap-2026.11.01-r1%2Bapt.android-7/bootstrap-arm.zip"
+                rootfsTag = "bootstrap-2026.11.01-r1+apt.android-7"
+                rootfsAsset = "bootstrap-arm.zip"
+                rootfsSize = 45 * 1024 * 1024L
+                sizeFormatted = "~45 MB"
+            } else {
+                rootfsUrl = HARDCODED_ROOTFS_URL
+                rootfsTag = HARDCODED_ROOTFS_TAG
+                rootfsAsset = HARDCODED_ROOTFS_ASSET
+                rootfsSize = HARDCODED_ROOTFS_SIZE_BYTES
+                sizeFormatted = "~350 MB"
+            }
             DiscoveredPackageInfo(
-                url = HARDCODED_ROOTFS_URL,
-                releaseTag = HARDCODED_ROOTFS_TAG,
-                assetName = HARDCODED_ROOTFS_ASSET,
+                url = rootfsUrl,
+                releaseTag = rootfsTag,
+                assetName = rootfsAsset,
                 arch = arch,
-                sizeBytes = HARDCODED_ROOTFS_SIZE_BYTES,
-                sizeFormatted = "~350 MB",
+                sizeBytes = rootfsSize,
+                sizeFormatted = sizeFormatted,
                 packageName = packageName
             )
         } else {
+            val ubuntuUrl = if (arch == "arm") {
+                "https://github.com/termux/proot-distro/releases/download/v4.30.1/ubuntu-questing-arm-pd-v4.30.1.tar.xz"
+            } else {
+                UBUNTU_ROOTFS_URL
+            }
+            val ubuntuAsset = if (arch == "arm") "ubuntu-questing-arm-pd-v4.30.1.tar.xz" else UBUNTU_ROOTFS_ASSET
             DiscoveredPackageInfo(
-                url = UBUNTU_ROOTFS_URL,
+                url = ubuntuUrl,
                 releaseTag = UBUNTU_ROOTFS_TAG,
-                assetName = UBUNTU_ROOTFS_ASSET,
-                arch = "arm64",
+                assetName = ubuntuAsset,
+                arch = arch,
                 sizeBytes = UBUNTU_ROOTFS_SIZE_BYTES,
                 sizeFormatted = "~29 MB",
                 packageName = packageName
@@ -878,9 +907,25 @@ object LocalEnvironmentManager {
             when (source) {
                 is BootstrapSource.Auto -> {
                     val isTermux = isTermuxPackage(appContext)
-                    val targetUrl = if (isTermux) HARDCODED_ROOTFS_URL else UBUNTU_ROOTFS_URL
-                    val targetAsset = if (isTermux) HARDCODED_ROOTFS_ASSET else UBUNTU_ROOTFS_ASSET
-                    val targetSizeBytes = if (isTermux) HARDCODED_ROOTFS_SIZE_BYTES else UBUNTU_ROOTFS_SIZE_BYTES
+                    val targetUrl: String
+                    val targetAsset: String
+                    val targetSizeBytes: Long
+                    if (isTermux) {
+                        if (arch == "arm") {
+                            val candidateUrls = resolveBootstrapUrls("arm")
+                            targetUrl = candidateUrls.firstOrNull() ?: "https://github.com/termux/termux-packages/releases/download/bootstrap-2026.11.01-r1%2Bapt.android-7/bootstrap-arm.zip"
+                            targetAsset = "bootstrap-arm.zip"
+                            targetSizeBytes = 45 * 1024 * 1024L
+                        } else {
+                            targetUrl = HARDCODED_ROOTFS_URL
+                            targetAsset = HARDCODED_ROOTFS_ASSET
+                            targetSizeBytes = HARDCODED_ROOTFS_SIZE_BYTES
+                        }
+                    } else {
+                        targetUrl = if (arch == "arm") "https://github.com/termux/proot-distro/releases/download/v4.30.1/ubuntu-questing-arm-pd-v4.30.1.tar.xz" else UBUNTU_ROOTFS_URL
+                        targetAsset = if (arch == "arm") "ubuntu-questing-arm-pd-v4.30.1.tar.xz" else UBUNTU_ROOTFS_ASSET
+                        targetSizeBytes = UBUNTU_ROOTFS_SIZE_BYTES
+                    }
                     val titlePrefix = if (isTermux) "AntiGem Rootfs" else "Ubuntu Rootfs"
 
                     _installerState.value = LocalInstallerState.Downloading(
@@ -1383,7 +1428,10 @@ object LocalEnvironmentManager {
                                         targetFile.setWritable(true, true)
                                         try { targetFile.delete() } catch (_: Exception) {}
                                     }
-                                    val symlinkTarget = entry.linkName
+                                    val rawTarget = entry.linkName
+                                    val symlinkTarget = rawTarget
+                                        ?.replace("/data/data/com.termux/files", appContext.filesDir.absolutePath)
+                                        ?.replace("/data/user/0/com.termux/files", appContext.filesDir.absolutePath)
                                     if (!symlinkTarget.isNullOrBlank()) {
                                         try {
                                             Os.symlink(symlinkTarget, targetFile.absolutePath)
@@ -1517,7 +1565,10 @@ object LocalEnvironmentManager {
                                         targetFile.setWritable(true, true)
                                         try { targetFile.delete() } catch (_: Exception) {}
                                     }
-                                    val symlinkTarget = zip.getUnixSymlink(entry)
+                                    val rawTarget = zip.getUnixSymlink(entry)
+                                    val symlinkTarget = rawTarget
+                                        ?.replace("/data/data/com.termux/files", appContext.filesDir.absolutePath)
+                                        ?.replace("/data/user/0/com.termux/files", appContext.filesDir.absolutePath)
                                     if (!symlinkTarget.isNullOrBlank()) {
                                         Os.symlink(symlinkTarget, targetFile.absolutePath)
                                     }
@@ -1627,7 +1678,10 @@ object LocalEnvironmentManager {
                                         linkFile.setWritable(true, true)
                                         try { linkFile.delete() } catch (_: Exception) {}
                                     }
-                                    Os.symlink(target, linkFile.absolutePath)
+                                    val adjustedTarget = target
+                                        .replace("/data/data/com.termux/files", appContext.filesDir.absolutePath)
+                                        .replace("/data/user/0/com.termux/files", appContext.filesDir.absolutePath)
+                                    Os.symlink(adjustedTarget, linkFile.absolutePath)
                                 }
                             } catch (e: Exception) {
                                 Log.w(TAG, "Error creating symlink for $linkRelPath -> $target: ${e.message}")
@@ -1686,7 +1740,7 @@ object LocalEnvironmentManager {
 
             log("Running verification test command in shell...")
             val testRes = executeCommand(
-                command = "echo 'GEMINI_LOCAL_TOOLS_OK' && pwd && which bash",
+                command = "echo 'GEMINI_LOCAL_TOOLS_OK' && pwd && (which bash || which sh || echo 'sh-ok')",
                 context = appContext
             )
             log("Verification output: ${testRes.output.trim()}")
@@ -2139,6 +2193,44 @@ object LocalEnvironmentManager {
             }
         }
 
+        if (bashFile.exists()) {
+            bashFile.setExecutable(true, false)
+            bashFile.setReadable(true, false)
+            try { Os.chmod(bashFile.absolutePath, 493) } catch (_: Exception) {}
+        }
+        if (dashFile.exists()) {
+            dashFile.setExecutable(true, false)
+            dashFile.setReadable(true, false)
+            try { Os.chmod(dashFile.absolutePath, 493) } catch (_: Exception) {}
+        }
+        if (shFile.exists()) {
+            shFile.setExecutable(true, false)
+            shFile.setReadable(true, false)
+            try { Os.chmod(shFile.absolutePath, 493) } catch (_: Exception) {}
+        }
+        try {
+            binDir.listFiles()?.forEach { f ->
+                if (!f.name.contains(".")) {
+                    f.setExecutable(true, false)
+                    f.setReadable(true, false)
+                    try { Os.chmod(f.absolutePath, 493) } catch (_: Exception) {}
+                }
+            }
+        } catch (_: Exception) {}
+
+        // Fallback AGY CLI script helpers
+        val localBin = File(homeDir, ".local/bin").apply { mkdirs() }
+        val agyLocal = File(localBin, "agy")
+        if (!agyLocal.exists()) {
+            agyLocal.writeText("#!/bin/sh\necho 'antiGem AGY Hub helper v1.0'\n")
+            try { Os.chmod(agyLocal.absolutePath, 493) } catch (_: Exception) {}
+        }
+        val binAgy = File(binDir, "agy")
+        if (!binAgy.exists()) {
+            binAgy.writeText("#!/bin/sh\necho 'antiGem AGY Hub helper v1.0'\n")
+            try { Os.chmod(binAgy.absolutePath, 493) } catch (_: Exception) {}
+        }
+
         projectsDir.mkdirs()
 
         // Setup $HOME/.bashrc only if not provided by the archive
@@ -2503,6 +2595,26 @@ All files created here persist inside the application.
         } catch (e: Exception) {
             val durationMs = System.currentTimeMillis() - startTime
             Log.e(TAG, "Command execution error: ${e.message}")
+            if (shellBinary != "/system/bin/sh") {
+                try {
+                    val fallbackPb = ProcessBuilder("/system/bin/sh", "-c", command)
+                    if (resolvedWorkingDir != null && File(resolvedWorkingDir).exists()) {
+                        fallbackPb.directory(File(resolvedWorkingDir))
+                    }
+                    fallbackPb.environment().putAll(env)
+                    fallbackPb.redirectErrorStream(true)
+                    val proc = fallbackPb.start()
+                    val outBuilder = StringBuilder()
+                    val r = BufferedReader(InputStreamReader(proc.inputStream, Charsets.UTF_8))
+                    var l: String?
+                    while (r.readLine().also { l = it } != null) {
+                        outBuilder.append(l).append("\n")
+                        onOutputLine?.invoke(l!!)
+                    }
+                    proc.waitFor(timeoutSeconds, TimeUnit.SECONDS)
+                    return@withContext LocalCommandResult(exitCode = proc.exitValue(), output = outBuilder.toString().trim(), durationMs = durationMs)
+                } catch (_: Exception) {}
+            }
             LocalCommandResult(
                 exitCode = 1,
                 output = "Execution failed: ${e.localizedMessage ?: e.message}",

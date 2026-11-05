@@ -110,8 +110,22 @@ class AuthPreferences(private val context: Context) {
         @Volatile
         var currentSecurityToken: String = ""
 
+        fun init(context: Context) {
+            val syncPrefs = context.getSharedPreferences("anti_gem_sync_prefs", Context.MODE_PRIVATE)
+            val savedHub = syncPrefs.getString("agy_hub_url", null)
+            val savedBridgeHttp = syncPrefs.getString("agy_bridge_http_url", null)
+            if (!savedHub.isNullOrBlank()) currentHubUrl = migrateHubUrl(savedHub)
+            if (!savedBridgeHttp.isNullOrBlank()) currentBridgeHttpUrl = migrateBridgeUrl(savedBridgeHttp)
+            var token = syncPrefs.getString("security_token", null)
+            if (token.isNullOrBlank() || token.length != TOKEN_LENGTH) {
+                token = generateRandomToken()
+                syncPrefs.edit().putString("security_token", token).apply()
+            }
+            currentSecurityToken = token
+        }
+
         val currentFramedHeader: String
-            get() = buildFramedHeader(currentSecurityToken)
+            get() = buildFramedHeader(currentSecurityToken.ifBlank { "0123456789ab" })
 
         // per app (see the build flavors): com.antigem uses other ports than com.termux so both can run together
         val DEFAULT_HUB_URL = "http://127.0.0.1:${com.example.gemini.BuildConfig.HUB_PORT}"
