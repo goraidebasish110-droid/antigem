@@ -51,6 +51,28 @@ object TermuxStorageSetupManager {
         }
     }
 
+    fun ensureEssentialDirectories(context: Context) {
+        try {
+            val homeDir = LocalEnvironmentManager.getHomeDir(context)
+            if (!homeDir.exists()) homeDir.mkdirs()
+
+            val projectsDir = LocalEnvironmentManager.getProjectsDir(context)
+            if (!projectsDir.exists()) projectsDir.mkdirs()
+
+            val tmpDir = LocalEnvironmentManager.getTmpDir(context)
+            if (!tmpDir.exists()) tmpDir.mkdirs()
+
+            val storageDir = File(homeDir, "storage")
+            if (!storageDir.exists()) storageDir.mkdirs()
+
+            if (hasStoragePermission(context)) {
+                setupStorageSymlinks(context)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed ensuring essential directories: ${e.message}")
+        }
+    }
+
     fun setupStorageSymlinks(context: Context): Boolean {
         return try {
             val homeDir = LocalEnvironmentManager.getHomeDir(context)

@@ -63,6 +63,8 @@ class MainActivity : ComponentActivity() {
         } catch (_: Exception) {
         }
 
+        com.example.gemini.data.local.TermuxStorageSetupManager.ensureEssentialDirectories(this)
+
         if (com.example.gemini.ui.components.PermissionUtils.hasNotificationPermission(this)) {
             com.example.gemini.data.service.TermuxService.start(this)
             com.example.gemini.data.local.LocalServerManager.autoStartOnAppLaunch(this)

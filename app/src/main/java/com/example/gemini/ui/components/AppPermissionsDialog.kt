@@ -101,6 +101,9 @@ fun AppPermissionsDialog(
                 hasNotification = PermissionUtils.hasNotificationPermission(context)
                 hasStorage = PermissionUtils.hasStoragePermission(context)
                 hasAudio = PermissionUtils.hasAudioPermission(context)
+                if (hasStorage) {
+                    com.example.gemini.data.local.TermuxStorageSetupManager.ensureEssentialDirectories(context)
+                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -143,6 +146,9 @@ fun AppPermissionsDialog(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) {
         hasStorage = PermissionUtils.hasStoragePermission(context)
+        if (hasStorage) {
+            com.example.gemini.data.local.TermuxStorageSetupManager.ensureEssentialDirectories(context)
+        }
     }
 
     fun requestStorage() {

@@ -116,7 +116,7 @@ android {
 }
 
 kotlin {
-    jvmToolchain(21)
+    jvmToolchain(17)
 }
 
 dependencies {
@@ -224,6 +224,15 @@ val buildAgyIdeBridge = tasks.register<Exec>("buildAgyIdeBridge") {
 
   doFirst {
     binDir.asFile.mkdirs()
+  }
+
+  onlyIf {
+    try {
+      val proc = ProcessBuilder("go", "version").start()
+      proc.waitFor() == 0
+    } catch (_: Exception) {
+      false
+    }
   }
 
   workingDir = bridgeSourceDir.asFile
