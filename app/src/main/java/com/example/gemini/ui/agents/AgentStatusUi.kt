@@ -88,12 +88,23 @@ fun agyStatusEntry(
     return when {
         serverRestarting -> entry("Restarting…", SystemStatus.STARTING.dotColor, "The local server is restarting.", pending = true)
         isAuthBusy -> entry("Signing in…", SystemStatus.ACQUIRING_CSRF.dotColor, "Finish signing in with Google in your browser.", AgentStatusAction("Check", onCheckAuth), pending = true)
+        authInfo.isLoggedIn -> entry(
+            "Ready",
+            color = SystemStatus.READY.dotColor,
+            detail = listOf(authInfo.email, authInfo.userTier.ifBlank { authInfo.planName })
+                .filter { it.isNotBlank() }.joinToString(" · ").ifBlank { null }
+        )
         status == SystemStatus.OFFLINE && inStartupGrace -> entry("Starting…", SystemStatus.STARTING.dotColor, "Starting the local server.", pending = true)
         status == SystemStatus.OFFLINE && state is SystemConnectionState.Connected -> entry(
             "Offline",
             detail = "The Antigravity hub is stopped.",
             action = AgentStatusAction("Restart", onRestartServer)
         )
+        status == SystemStatus.OFFLINE && !authInfo.isLoggedIn -> entry(
+            "Sign in required",
+            detail = "Sign in with Google to chat with Antigravity.",
+            action = AgentStatusAction("Sign in", onSignIn)
+        ).copy(isSignedOut = true)
         status == SystemStatus.OFFLINE -> entry(
             "Offline",
             detail = "The local server is not running.",

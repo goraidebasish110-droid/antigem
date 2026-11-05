@@ -201,8 +201,24 @@ class AgyChatBackend(
         }
     }
 
+    private val apiService = AntigravityApiService()
+
     private val _agyAuthInfo = MutableStateFlow(com.example.gemini.data.remote.AgyHubClient.AgyAuthInfo(status = com.example.gemini.data.remote.AgyHubClient.AgyAuthStatus.CHECKING))
     val agyAuthInfo: StateFlow<com.example.gemini.data.remote.AgyHubClient.AgyAuthInfo> = _agyAuthInfo.asStateFlow()
+
+    fun setCustomAuthInfo(info: com.example.gemini.data.remote.AgyHubClient.AgyAuthInfo) {
+        _agyAuthInfo.value = info
+        _isServerOnline.value = true
+        _isBridgeOnline.value = true
+        refreshQuotas(force = true)
+    }
+
+    fun clearAuthInfo() {
+        _agyAuthInfo.value = com.example.gemini.data.remote.AgyHubClient.AgyAuthInfo(
+            status = com.example.gemini.data.remote.AgyHubClient.AgyAuthStatus.UNAUTHENTICATED,
+            isLoggedIn = false
+        )
+    }
 
     private val _isAuthBusy = MutableStateFlow(false)
     val isAuthBusy: StateFlow<Boolean> = _isAuthBusy.asStateFlow()
@@ -1464,6 +1480,14 @@ class AgyChatBackend(
         val isKnownOnDaemon = knownDaemonCascadeIds.contains(conv.id) ||
                 (totalStepsCount > 0 && conv.title != "New Chat" && conv.title != "Antigravity Chat" && conv.title.isNotBlank())
 
+        val isDirectGoogle = agyBridgeService.systemConnectionState.value is com.example.gemini.data.remote.SystemConnectionState.DirectGoogle || !agyBridgeService.systemConnectionState.value.isHubOnline
+        if (isDirectGoogle) {
+            backendScope.launch(Dispatchers.IO) {
+                executeDirectStream(conv, currentHistory, assistantMsgId, userPrompt, modelEnum, thinkingBudget)
+            }
+            return
+        }
+
         backendScope.launch(Dispatchers.IO) {
             try {
                 // If brand new conversation not yet on daemon, call startCascade FIRST and await it!
@@ -1642,6 +1666,80 @@ class AgyChatBackend(
         }
     }
 
+    private suspend fun executeDirectStream(
+        conv: Conversation,
+        currentHistory: List<ChatMessage>,
+        assistantMsgId: String,
+        userPrompt: String,
+        modelEnum: String,
+        thinkingBudget: Int
+    ) {
+        val token = authPrefs.accessToken.firstOrNull() ?: ""
+        val proj = authPrefs.projectId.firstOrNull() ?: "rising-fact-p41fc"
+        val textBuilder = StringBuilder()
+        val thoughtBuilder = StringBuilder()
+
+        _isStreaming.value = true
+        isPromptInFlight = true
+
+        try {
+            apiService.streamGenerateContent(
+                token = token,
+                projectId = proj,
+                modelId = modelEnum.ifBlank { "gemini-2.5-flash" },
+                sessionId = conv.id,
+                messages = currentHistory,
+                thinkingBudget = thinkingBudget,
+                isThinkingEnabled = thinkingBudget > 0
+            ).collect { event ->
+                when (event) {
+                    is StreamEvent.TextChunk -> {
+                        textBuilder.append(event.text)
+                        updateAssistantMessage(
+                            msgId = assistantMsgId,
+                            content = textBuilder.toString(),
+                            thought = thoughtBuilder.toString(),
+                            isStreaming = true
+                        )
+                    }
+                    is StreamEvent.ThoughtChunk -> {
+                        thoughtBuilder.append(event.thought)
+                        updateAssistantMessage(
+                            msgId = assistantMsgId,
+                            content = textBuilder.toString(),
+                            thought = thoughtBuilder.toString(),
+                            isStreaming = true
+                        )
+                    }
+                    is StreamEvent.Completed -> {
+                        updateAssistantMessage(
+                            msgId = assistantMsgId,
+                            content = textBuilder.toString(),
+                            thought = thoughtBuilder.toString(),
+                            isStreaming = false,
+                            forceImmediate = true
+                        )
+                    }
+                    is StreamEvent.Error -> {
+                        throw Exception(event.message)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            val err = e.message ?: "Error connecting to Antigravity"
+            Log.e("ChatViewModel", "Direct Antigravity streaming error: $err", e)
+            updateAssistantMessage(
+                msgId = assistantMsgId,
+                content = (textBuilder.toString() + "\n\n❌ $err").trim(),
+                isStreaming = false,
+                forceImmediate = true
+            )
+        } finally {
+            _isStreaming.value = false
+            isPromptInFlight = false
+        }
+    }
+
     private var lastStreamUpdateTime = 0L
 
     private fun updateAssistantMessage(
@@ -1811,7 +1909,24 @@ class AgyChatBackend(
                         recomputeEnabledModels()
                     }
                 } else {
-                    failureError = modelsRes.exceptionOrNull()?.message
+                    val token = authPrefs.accessToken.firstOrNull()
+                    val proj = authPrefs.projectId.firstOrNull()
+                    if (!token.isNullOrBlank()) {
+                        val cloudModelsRes = apiService.fetchAvailableModels(token, proj)
+                        if (cloudModelsRes.isSuccess) {
+                            val res = cloudModelsRes.getOrThrow()
+                            if (res.models.isNotEmpty()) {
+                                _availableModels.value = res.models
+                                _quotas.value = res.quotas
+                                recomputeEnabledModels()
+                                failureError = null
+                            }
+                        } else {
+                            failureError = cloudModelsRes.exceptionOrNull()?.message
+                        }
+                    } else {
+                        failureError = modelsRes.exceptionOrNull()?.message
+                    }
                 }
 
                 if (quotasRes.isSuccess) {

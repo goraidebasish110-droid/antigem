@@ -47,7 +47,8 @@ __pycache__/
 # Proto Generator Large JSON Schemas
 proto_generator/*.json
 
-# Kotlin Compiler Session & Daemon Cache
+attachments/
+output/
 .kotlin/
 
 # IDE & Gemini Metadata

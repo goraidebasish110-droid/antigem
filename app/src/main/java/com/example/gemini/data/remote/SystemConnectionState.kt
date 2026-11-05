@@ -94,8 +94,20 @@ sealed class SystemConnectionState {
         override val status: SystemStatus get() = SystemStatus.ERROR
     }
 
+    /**
+     * Direct Google OAuth connection (standalone without local terminal daemon).
+     */
+    data class DirectGoogle(
+        val email: String = "",
+        val projectId: String = "",
+        val tier: String = ""
+    ) : SystemConnectionState() {
+        override val status: SystemStatus get() = SystemStatus.READY
+        override val isAuth: Boolean get() = true
+    }
+
     val isBridgeOnline: Boolean
-        get() = this is Connected
+        get() = this is Connected || this is DirectGoogle
 
     val isHubOnline: Boolean
         get() = status == SystemStatus.READY || status == SystemStatus.CHECKING_AUTH || status == SystemStatus.UNAUTHENTICATED || status == SystemStatus.ACQUIRING_CSRF

@@ -366,6 +366,13 @@ fun ChatScreen(
         com.example.gemini.ui.components.AppToastHelper.showToast("Checking Claude Code…", com.example.gemini.ui.components.ChatToastType.INFO)
         viewModel.claudeAccount.refreshStatus()
     }
+    val onAgySignIn = {
+        if (systemConnectionState.isHubOnline && systemConnectionState !is com.example.gemini.data.remote.SystemConnectionState.DirectGoogle) {
+            viewModel.loginToAgyHub(force = true)
+        } else {
+            viewModel.startGoogleSignIn(context)
+        }
+    }
     val agyEntry = if (com.example.gemini.domain.model.AgentKind.AGY in enabledAgents) {
         com.example.gemini.ui.agents.agyStatusEntry(
             state = systemConnectionState,
@@ -373,7 +380,7 @@ fun ChatScreen(
             isAuthBusy = isAuthBusy,
             inStartupGrace = isInitialGracePeriod,
             serverRestarting = serverRestarting,
-            onSignIn = { viewModel.loginToAgyHub(force = true) },
+            onSignIn = onAgySignIn,
             onCheckAuth = { viewModel.checkAgyAuthStatus(userInitiated = true) },
             onRetry = {
                 com.example.gemini.ui.components.AppToastHelper.showToast("Reconnecting to Antigravity…", com.example.gemini.ui.components.ChatToastType.INFO)
@@ -980,9 +987,7 @@ fun ChatScreen(
                 },
                 authInfo = agyAuthInfo,
                 isAuthBusy = isAuthBusy,
-                onLogin = {
-                    viewModel.loginToAgyHub(force = true)
-                },
+                onLogin = onAgySignIn,
                 onLogout = {
                     viewModel.logoutFromAgyHub()
                 },
@@ -1425,7 +1430,7 @@ fun ChatScreen(
                                     com.example.gemini.data.remote.SystemStatus.UNAUTHENTICATED -> {
                                         if (isNetworkConnected) {
                                             com.example.gemini.ui.components.NewChatSignInPromptCard(
-                                                onSignInClick = { viewModel.loginToAgyHub(force = true) }
+                                                onSignInClick = onAgySignIn
                                             )
                                         }
                                     }

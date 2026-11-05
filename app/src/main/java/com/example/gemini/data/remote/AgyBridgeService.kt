@@ -202,8 +202,28 @@ class AgyBridgeService(
     private var currentAuthChecking: Boolean = false
     private var currentHubStatus: String = "idle"
     private var currentHubError: String? = null
+    private var isDirectGoogleAuth: Boolean = false
+    private var directGoogleEmail: String = ""
+    private var directGoogleProject: String = ""
+    private var directGoogleTier: String = ""
+
+    fun setDirectGoogleAuth(isAuth: Boolean, email: String = "", projectId: String = "", tier: String = "") {
+        isDirectGoogleAuth = isAuth
+        directGoogleEmail = email
+        directGoogleProject = projectId
+        directGoogleTier = tier
+        if (isAuth) {
+            _systemConnectionState.value = SystemConnectionState.DirectGoogle(email, projectId, tier)
+        } else {
+            recomputeSystemConnectionState()
+        }
+    }
 
     fun recomputeSystemConnectionState() {
+        if (isDirectGoogleAuth) {
+            _systemConnectionState.value = SystemConnectionState.DirectGoogle(directGoogleEmail, directGoogleProject, directGoogleTier)
+            return
+        }
         if (!isBridgeConnected) {
             _systemConnectionState.value = SystemConnectionState.Offline
             return
@@ -246,6 +266,9 @@ class AgyBridgeService(
     }
 
     fun resetState() {
+        if (isDirectGoogleAuth) {
+            return
+        }
         isBridgeConnected = false
         _connectionState.value = BridgeConnectionState.OFFLINE_ERROR
         _hubStatus.value = AgyHubStatus(status = "stopped")

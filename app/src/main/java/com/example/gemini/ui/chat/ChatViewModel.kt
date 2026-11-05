@@ -1000,6 +1000,31 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             authPrefs.isDevModeEnabled.collect { _isDevModeEnabled.value = it }
         }
 
+        viewModelScope.launch {
+            val token = authPrefs.accessToken.firstOrNull()
+            val email = authPrefs.userEmail.firstOrNull()
+            val proj = authPrefs.projectId.firstOrNull() ?: "rising-fact-p41fc"
+            val tier = authPrefs.subscriptionTier.firstOrNull() ?: "pro"
+            if (!token.isNullOrBlank() && !email.isNullOrBlank()) {
+                val authInfo = com.example.gemini.data.remote.AgyHubClient.AgyAuthInfo(
+                    status = com.example.gemini.data.remote.AgyAuthStatus.AUTHENTICATED,
+                    isLoggedIn = true,
+                    fullName = email.substringBefore('@'),
+                    displayName = email.substringBefore('@'),
+                    email = email,
+                    userTier = tier,
+                    planName = tier,
+                    isOffline = false
+                )
+                agyBackend.setCustomAuthInfo(authInfo)
+                com.example.gemini.data.remote.AgyBridgeService.instance.setDirectGoogleAuth(
+                    isAuth = true,
+                    email = email,
+                    projectId = proj,
+                    tier = tier
+                )
+            }
+        }
     }
 
     fun getDraft(conversationId: String): androidx.compose.ui.text.input.TextFieldValue {
@@ -1154,7 +1179,21 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _userEmail.value = null
         _projectId.value = "rising-fact-p41fc"
         _tier.value = "pro"
+        com.example.gemini.data.remote.AgyBridgeService.instance.setDirectGoogleAuth(false)
+        agyBackend.clearAuthInfo()
         agyBackend.resetQuotaState()
+    }
+
+    fun startGoogleSignIn(context: Context) {
+        val url = getGoogleOAuthUrl()
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            android.util.Log.e("GeminiApp", "Failed to start Google sign-in: ${e.message}")
+        }
     }
 
     fun getGoogleOAuthUrl(): String {
@@ -1193,7 +1232,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 android.util.Log.d("GeminiApp", "[OAuth] Token exchange SUCCESS! Fetching user profile...")
                 val userRes = oauthManager.fetchUserInfo(tokenData.access_token)
                 val email = userRes.getOrNull()?.email ?: "Google Account"
-                android.util.Log.d("GeminiApp", "[OAuth] User email resolved: $email")
+                val name = userRes.getOrNull()?.name ?: email.substringBefore('@')
+                android.util.Log.d("GeminiApp", "[OAuth] User email resolved: $email, name: $name")
 
                 authPrefs.saveTokens(
                     accessToken = tokenData.access_token,
@@ -1203,9 +1243,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 )
                 withContext(Dispatchers.Main) { _userEmail.value = email }
 
+                var discoveredProj = "rising-fact-p41fc"
+                var discoveredTier = "pro"
                 val assistRes = apiService.loadCodeAssist(tokenData.access_token)
                 if (assistRes.isSuccess) {
                     val (proj, tier) = assistRes.getOrThrow()
+                    discoveredProj = proj
+                    discoveredTier = tier
                     android.util.Log.d("GeminiApp", "[OAuth] CodeAssist project: $proj, tier: $tier")
                     authPrefs.saveProjectInfo(proj, tier)
                     withContext(Dispatchers.Main) {
@@ -1215,7 +1259,29 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 } else {
                     android.util.Log.w("GeminiApp", "[OAuth] CodeAssist loading warning: ${assistRes.exceptionOrNull()?.message}")
                 }
+
+                val authInfo = com.example.gemini.data.remote.AgyHubClient.AgyAuthInfo(
+                    status = com.example.gemini.data.remote.AgyAuthStatus.AUTHENTICATED,
+                    isLoggedIn = true,
+                    fullName = name,
+                    displayName = name,
+                    email = email,
+                    userTier = discoveredTier,
+                    planName = discoveredTier,
+                    isOffline = false
+                )
+                agyBackend.setCustomAuthInfo(authInfo)
+                com.example.gemini.data.remote.AgyBridgeService.instance.setDirectGoogleAuth(
+                    isAuth = true,
+                    email = email,
+                    projectId = discoveredProj,
+                    tier = discoveredTier
+                )
                 refreshQuotas()
+                com.example.gemini.ui.components.AppToastHelper.showToast(
+                    "Signed in as $name",
+                    com.example.gemini.ui.components.ChatToastType.SUCCESS
+                )
             } else {
                 android.util.Log.e("GeminiApp", "[OAuth] Token exchange FAILED after retries: ${tokenRes?.exceptionOrNull()?.message}")
             }
