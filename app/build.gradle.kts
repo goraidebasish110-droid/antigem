@@ -218,7 +218,7 @@ wire {
   }
 }
 
-val buildAgyIdeBridge = tasks.register("buildAgyIdeBridge") {
+val buildAgyIdeBridgeArm64 = tasks.register<Exec>("buildAgyIdeBridgeArm64") {
   val binDir = layout.projectDirectory.dir("src/main/assets/bin")
   val bridgeSourceDir = layout.projectDirectory.dir("../agy_ide_bridge")
 
@@ -235,27 +235,42 @@ val buildAgyIdeBridge = tasks.register("buildAgyIdeBridge") {
     }
   }
 
+  workingDir = bridgeSourceDir.asFile
+  environment("GOOS", "android")
+  environment("GOARCH", "arm64")
+  environment("CGO_ENABLED", "0")
+  commandLine("go", "build", "-ldflags=-s -w", "-o", binDir.file("agy_ide_bridge_arm64").asFile.absolutePath, "main.go")
+}
+
+val buildAgyIdeBridgeArm = tasks.register<Exec>("buildAgyIdeBridgeArm") {
+  val binDir = layout.projectDirectory.dir("src/main/assets/bin")
+  val bridgeSourceDir = layout.projectDirectory.dir("../agy_ide_bridge")
+
+  doFirst {
+    binDir.asFile.mkdirs()
+  }
+
+  onlyIf {
+    try {
+      val proc = ProcessBuilder("go", "version").start()
+      proc.waitFor() == 0
+    } catch (_: Exception) {
+      false
+    }
+  }
+
+  workingDir = bridgeSourceDir.asFile
+  environment("GOOS", "android")
+  environment("GOARCH", "arm")
+  environment("GOARM", "7")
+  environment("CGO_ENABLED", "0")
+  commandLine("go", "build", "-ldflags=-s -w", "-o", binDir.file("agy_ide_bridge_arm").asFile.absolutePath, "main.go")
+}
+
+val buildAgyIdeBridge = tasks.register("buildAgyIdeBridge") {
+  dependsOn(buildAgyIdeBridgeArm64, buildAgyIdeBridgeArm)
+  val binDir = layout.projectDirectory.dir("src/main/assets/bin")
   doLast {
-    // 1. Build ARM64 (64-bit)
-    project.exec {
-      workingDir = bridgeSourceDir.asFile
-      environment("GOOS", "android")
-      environment("GOARCH", "arm64")
-      environment("CGO_ENABLED", "0")
-      commandLine("go", "build", "-ldflags=-s -w", "-o", binDir.file("agy_ide_bridge_arm64").asFile.absolutePath, "main.go")
-    }
-
-    // 2. Build ARM (32-bit ARMv7 for devices like Samsung Galaxy J7 Prime)
-    project.exec {
-      workingDir = bridgeSourceDir.asFile
-      environment("GOOS", "android")
-      environment("GOARCH", "arm")
-      environment("GOARM", "7")
-      environment("CGO_ENABLED", "0")
-      commandLine("go", "build", "-ldflags=-s -w", "-o", binDir.file("agy_ide_bridge_arm").asFile.absolutePath, "main.go")
-    }
-
-    // 3. Default agy_ide_bridge fallback
     val arm64File = binDir.file("agy_ide_bridge_arm64").asFile
     val defaultFile = binDir.file("agy_ide_bridge").asFile
     if (arm64File.exists()) {
